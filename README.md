@@ -7,7 +7,7 @@ The general breakdown is below and is what this repo aims to cover:
   - Know various ways to configure applications
   - Know how to scale applications
   - Understand the primitives necessary to create a self-healing application
-- **Installation, Configuration & Validation - 12%**
+- **Installation, Configuration & Validation - 12%** - Currently WIP
   - Design a Kubernetes Cluster
   - Install Kubernetes masters and nodes, including the use of TLS bootstrapping
   - Configure secure cluster communications
@@ -23,7 +23,7 @@ The general breakdown is below and is what this repo aims to cover:
   - Understand the Kubernetes API primitives
   - Understand the Kubernetes cluster architecture
   - Understand Services and other network primitives
-- **Networking - 11%**
+- **Networking - 11%** - Currently WIP
   - Understand Pod networking concepts
   - Understand service networking
   - Deploy and configure network load balancer
@@ -38,7 +38,7 @@ The general breakdown is below and is what this repo aims to cover:
   - Manually schedule a pod without a scheduler
   - Display scheduler events
   - Know how to configure the Kubernetes scheduler
-- **Security - 12%**
+- **Security - 12%** - Currently WIP
   - Know how to configure authentication and authorization
   - Understand Kubernetes security primitives
   - Know to configure network policies
