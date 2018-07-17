@@ -445,3 +445,34 @@ nginx-deployment-75675f5897-qbthv   1/1       Running   0          8s        9.0
 ```
 
 As you can see, because of the taint on the node as well as the `NoSchedule` rule all of the pods landed on `kube-node-0-kubelet.kubernetes.mesos` instead
+
+Remove the Taint:
+```
+$ kubectl taint nodes kube-node-1-kubelet.kubernetes.mesos key:NoSchedule-
+node "kube-node-1-kubelet.kubernetes.mesos" untainted
+```
+
+Kill one of the running pods to watch it reschedule, and land back on `kube-node-1-kubelet.kubernetes.mesos`:
+```
+$ kubectl get pods -o wide
+NAME                                READY     STATUS    RESTARTS   AGE       IP         NODE
+nginx-deployment-75675f5897-4tbvs   1/1       Running   0          33m       9.0.6.18   kube-node-0-kubelet.kubernetes.mesos
+nginx-deployment-75675f5897-pdgsd   1/1       Running   0          33m       9.0.6.16   kube-node-0-kubelet.kubernetes.mesos
+nginx-deployment-75675f5897-qbthv   1/1       Running   0          33m       9.0.6.17   kube-node-0-kubelet.kubernetes.mesos
+
+$ kubectl delete pod nginx-deployment-75675f5897-4tbvs
+pod "nginx-deployment-75675f5897-4tbvs" deleted
+
+$ kubectl get pods -o wide
+NAME                                READY     STATUS    RESTARTS   AGE       IP         NODE
+nginx-deployment-75675f5897-67wk6   1/1       Running   0          7s        9.0.3.19   kube-node-1-kubelet.kubernetes.mesos
+nginx-deployment-75675f5897-pdgsd   1/1       Running   0          34m       9.0.6.16   kube-node-0-kubelet.kubernetes.mesos
+nginx-deployment-75675f5897-qbthv   1/1       Running   0          34m       9.0.6.17   kube-node-0-kubelet.kubernetes.mesos
+```
+
+Delete Deployment:
+```
+$ kubectl delete deployment nginx-deployment
+deployment.extensions "nginx-deployment" deleted
+```
+
