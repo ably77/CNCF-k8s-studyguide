@@ -398,3 +398,50 @@ Events:
   Normal  Created                31s   kubelet, kube-node-1-kubelet.kubernetes.mesos  Created container
 ```
 
+## Using Taints
+Reference from kubernetes.io:
+- [Taints and Tolerations](https://kubernetes.io/docs/concepts/configuration/taint-and-toleration/)
+
+Taints allow a node to repel a set of pods. Taints and tolerations work together to ensure that pods are not scheduled onto inappropriate nodes. One or more taints are applied to a node; this marks that the node should not accept any pods that do not tolerate the taints. Tolerations are applied to pods, and allow (but do not require) the pods to schedule onto nodes with matching taints.
+
+There are three types of taints:
+- `NoSchedule` - Kubernetes will not schedule the pod onto the tainted node
+- `PreferNoSchedule` - The system will try to avoid placing a pod that does not tolerate the taint on the node, but it is not required
+- `NoExecute` - If added to a node, any pods that do not tolerate the taint will be evicted immediately, and any pods that do tolerate the taint will never be evicted
+
+Deploy the `nginx-deployment.yaml` if not already deployed
+```
+$ kubectl create -f nginx-deployment.yaml
+deployment.apps "nginx-deployment" created
+
+$ kubectl get pods -o wide
+NAME                                READY     STATUS    RESTARTS   AGE       IP         NODE
+nginx-deployment-75675f5897-5nbzh   1/1       Running   0          19s       9.0.6.15   kube-node-0-kubelet.kubernetes.mesos
+nginx-deployment-75675f5897-74zst   1/1       Running   0          19s       9.0.3.18   kube-node-1-kubelet.kubernetes.mesos
+nginx-deployment-75675f5897-cfbj8   1/1       Running   0          19s       9.0.3.17   kube-node-1-kubelet.kubernetes.mesos
+```
+
+As you can see, my app deployment landed an instance on both `kube-node-0-kubelet.kubernetes.mesos` as well as `kube-node-1-kubelet.kubernetes.mesos`
+
+Go ahead and delete the deployment for now:
+```
+$ kubectl delete deployment nginx-deployment
+deployment.extensions "nginx-deployment" deleted
+```
+
+Add a taint to `kube-node-1-kubelet.kubernetes.mesos` and re-deploy:
+```
+$ kubectl taint nodes kube-node-1-kubelet.kubernetes.mesos key=value:NoSchedule
+node "kube-node-1-kubelet.kubernetes.mesos" tainted
+
+$ kubectl create -f nginx-deployment.yaml
+deployment.apps "nginx-deployment" created
+
+$ kubectl get pods -o wide
+NAME                                READY     STATUS    RESTARTS   AGE       IP         NODE
+nginx-deployment-75675f5897-4tbvs   1/1       Running   0          8s        9.0.6.18   kube-node-0-kubelet.kubernetes.mesos
+nginx-deployment-75675f5897-pdgsd   1/1       Running   0          8s        9.0.6.16   kube-node-0-kubelet.kubernetes.mesos
+nginx-deployment-75675f5897-qbthv   1/1       Running   0          8s        9.0.6.17   kube-node-0-kubelet.kubernetes.mesos
+```
+
+As you can see, because of the taint on the node as well as the `NoSchedule` rule all of the pods landed on `kube-node-0-kubelet.kubernetes.mesos` instead
