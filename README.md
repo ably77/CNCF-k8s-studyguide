@@ -38,6 +38,7 @@ The general breakdown is below and is what this repo aims to cover:
   - Manually schedule a pod without a scheduler
   - Display scheduler events
   - Know how to configure the Kubernetes scheduler
+  - Optional: Using Taints
 - **Security - 12%** - Currently WIP
   - Know how to configure authentication and authorization
   - Understand Kubernetes security primitives
