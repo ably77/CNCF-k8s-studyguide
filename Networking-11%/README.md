@@ -712,6 +712,7 @@ spec:
 ```
 
 Pod DNS Policy:
+
 DNS policies can be set on a per-pod basis. Currently Kubernetes supports the following pod-specific DNS policies. These policies are specified in the dnsPolicy field of a Pod Spec.
 - “Default“: The Pod inherits the name resolution configuration from the node that the pods run on. See related discussion for more details.
 - “ClusterFirst“: Any DNS query that does not match the configured cluster domain suffix, such as “www.kubernetes.io”, is forwarded to the upstream nameserver inherited from the node. Cluster administrators may have extra stub-domain and upstream DNS servers configured. See related discussion for details on how DNS queries are handled in those cases.
@@ -719,6 +720,7 @@ DNS policies can be set on a per-pod basis. Currently Kubernetes supports the fo
 - “None“: A new option value introduced in Kubernetes v1.9 (Beta in v1.10). It allows a Pod to ignore DNS settings from the Kubernetes environment. All DNS settings are supposed to be provided using the dnsConfig field in the Pod Spec. See DNS config subsection below.
 
 Pod DNS Config:
+
 Kubernetes v1.9 introduces an Alpha feature (Beta in v1.10) that allows users more control on the DNS settings for a Pod. This feature is enabled by default in v1.10.
 
 Below are the properties a user can specify in the dnsConfig field:
@@ -782,13 +784,13 @@ Other references:
 - [Official CNI Github](https://github.com/containernetworking/cni)
 - [CNI blogpost](http://www.dasblinkenlichten.com/understanding-cni-container-networking-interface/)
 
-From the Official CNI Github:
+### From the Official CNI Github:
 CNI (Container Network Interface), a Cloud Native Computing Foundation project, consists of a specification and libraries for writing plugins to configure network interfaces in Linux containers, along with a number of supported plugins. CNI concerns itself only with network connectivity of containers and removing allocated resources when the container is deleted. Because of this focus, CNI has a wide range of support and the specification is simple to implement.
 
-Why CNI?:
+### Why CNI?:
 Application containers on Linux are a rapidly evolving area, and within this area networking is not well addressed as it is highly environment-specific. We believe that many container runtimes and orchestrators will seek to solve the same problem of making the network layer pluggable.
 
-How CNI is deployed in Kubernetes:
+### How CNI is deployed in Kubernetes:
 The CNI plugin is selected by passing Kubelet the --network-plugin=cni command-line option. Kubelet reads a file from --cni-conf-dir (default /etc/cni/net.d) and uses the CNI configuration from that file to set up each pod’s network. The CNI configuration file must match the CNI specification, and any required CNI plugins referenced by the configuration must be present in --cni-bin-dir (default /opt/cni/bin).
 
 If there are multiple CNI configuration files in the directory, the first one in lexicographic order of file name is used.
