@@ -2,34 +2,16 @@ This Repo is based off of the [CKA Curriculum v1.8.0](https://github.com/cncf/cu
 
 The general breakdown is below and is what this repo aims to cover:
 
+## Completed
 - **Application Lifecycle Management - 8%**
   - Understand Deployments and how to perform rolling updates and rollbacks
   - Know various ways to configure applications
   - Know how to scale applications
   - Understand the primitives necessary to create a self-healing application
-- **Installation, Configuration & Validation - 12%** - Currently WIP
-  - Design a Kubernetes Cluster
-  - Install Kubernetes masters and nodes, including the use of TLS bootstrapping
-  - Configure secure cluster communications
-  - Configure a HA Kubernetes cluster
-  - Know where to get the Kubernetes release binaries
-  - Provision underlying infrastructure to deploy a Kubernetes cluster
-  - Choose a network solution
-  - Choose your Kubernetes infrastructure configuration
-  - Run end-to-end tests on your cluster
-  - Analyse end-to-end test results
-  - Run Node end-to-end tests
 - **Core Concepts - 19%**
   - Understand the Kubernetes API primitives
   - Understand the Kubernetes cluster architecture
   - Understand Services and other network primitives
-- **Networking - 11%** - Currently WIP
-  - Understand Pod networking concepts
-  - Understand service networking
-  - Deploy and configure network load balancer
-  - Know how to use Ingress rules
-  - Know how to configure and use the cluster DNS
-  - Understand CNI
 - **Scheduling - 5%**
   - Use label selectors to schedule Pods
   - Understand the role of DaemonSets
@@ -39,15 +21,6 @@ The general breakdown is below and is what this repo aims to cover:
   - Display scheduler events
   - Know how to configure the Kubernetes scheduler
   - Optional: Using Taints
-- **Security - 12%** - Currently WIP
-  - Know how to configure authentication and authorization
-  - Understand Kubernetes security primitives
-  - Know to configure network policies
-  - Create and manage TLS certificates for cluster components
-  - Work with images securely
-  - Define security contexts
-  - Secure persistent key value store
-  - Work with role-based access control
 - **Cluster Maintenance - 11%**
   - Understand Kubernetes cluster upgrade process
   - Facilitate operating system upgrades
@@ -69,3 +42,37 @@ The general breakdown is below and is what this repo aims to cover:
   - Troubleshoot worker node failure
   - Troubleshoot networking
 
+## WIP
+- **Security - 12%** 
+  - Know how to configure authentication and authorization
+  - Understand Kubernetes security primitives
+  - Know to configure network policies
+  - Create and manage TLS certificates for cluster components
+  - Work with images securely
+  - Define security contexts
+  - Secure persistent key value store
+  - Work with role-based access control
+  
+- **Installation, Configuration & Validation - 12%**
+  - Design a Kubernetes Cluster
+  - Install Kubernetes masters and nodes, including the use of TLS bootstrapping
+  - Configure secure cluster communications
+  - Configure a HA Kubernetes cluster
+  - Know where to get the Kubernetes release binaries
+  - Provision underlying infrastructure to deploy a Kubernetes cluster
+  - Choose a network solution
+  - Choose your Kubernetes infrastructure configuration
+  - Run end-to-end tests on your cluster
+  - Analyse end-to-end test results
+  - Run Node end-to-end tests
+
+- **Networking - 11%**
+  - Understand Pod networking concepts
+  - Understand service networking
+  - Deploy and configure network load balancer
+  - Know how to use Ingress rules
+  - Know how to configure and use the cluster DNS
+  - Understand CNI
+  
+- **Troubleshooting - 10%**
+  - Troubleshoot networking
