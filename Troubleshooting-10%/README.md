@@ -316,5 +316,239 @@ Common cluster failure root causes:
 Reference from kubernetes.io:
 - [Debug Services](https://kubernetes.io/docs/tasks/debug-application-cluster/debug-service/)
 
-WORK IN PROGRESS
+Confirm that the service exists:
+```
+$ kubectl get services
+NAME         TYPE        CLUSTER-IP   EXTERNAL-IP   PORT(S)   AGE
+kubernetes   ClusterIP   10.100.0.1   <none>        443/TCP   6h
+```
+
+From the output above, you can see that there is no service that exists. This is correct, because we never deployed a service. Lets go ahead and do that.
+
+Here is a Service definition for our `nginx-deployment`. For this example we will name it `nginx-service.yaml`:
+```
+kind: Service
+apiVersion: v1
+metadata:
+  name: nginx-deployment
+spec:
+  selector:
+    app: nginx
+  ports:
+  - protocol: TCP
+    port: 80
+```
+
+Deploy the service:
+```
+$ kubectl create -f nginx-service.yaml
+service "nginx-deployment" created
+
+$ kubectl get services
+NAME               TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)   AGE
+kubernetes         ClusterIP   10.100.0.1      <none>        443/TCP   6h
+nginx-deployment   ClusterIP   10.100.177.47   <none>        80/TCP    12s
+```
+
+### Does the Service work by DNS?
+
+We can check if the Service works by DNS by launching a Pod in the same namespace and using the `nslookup` utility:
+```
+### Run an interactive Curl Container in Kubernetes
+$ kubectl run curl --image=radial/busyboxplus:curl -i --tty --rm
+If you don't see a command prompt, try pressing enter.
+[ root@curl-775f9567b5-nf6tf:/ ]$
+
+[ root@curl-775f9567b5-nf6tf:/ ]$ nslookup nginx-deployment
+Server:    198.51.100.4
+Address 1: 198.51.100.4
+
+Name:      nginx-deployment
+Address 1: 10.100.177.47 nginx-deployment.default.svc.cluster.local
+```
+
+If this fails, perhaps your Pod and Service are in different Namespaces, try a namespace-qualified name. Your `nslookup` would look something like below:
+```
+[ root@curl-775f9567b5-nf6tf:/ ]$ nslookup nginx-deployment
+Server:    198.51.100.4
+Address 1: 198.51.100.4
+
+nslookup: can't resolve 'nginx-deployment'
+```
+
+To show this we will deploy our `nginx-deployment.yaml`, `nginx-service.yaml`, and the `curl` busybox image into a namespace called `foo`:
+```
+$ kubectl create namespace foo
+namespace "foo" created
+
+$ kubectl create -f nginx-deployment.yaml --namespace=foo
+deployment.apps "nginx-deployment" created
+
+$ kubectl get pods --namespace=foo
+NAME                                READY     STATUS    RESTARTS   AGE
+nginx-deployment-66996bc984-7wt85   1/1       Running   0          7s
+nginx-deployment-66996bc984-bdwbm   1/1       Running   0          7s
+
+$ kubectl create -f nginx-service.yaml --namespace=foo
+service "nginx-deployment" created
+
+$ kubectl get svc --namespace=foo
+NAME               TYPE        CLUSTER-IP       EXTERNAL-IP   PORT(S)   AGE
+nginx-deployment   ClusterIP   10.100.253.135   <none>        80/TCP    11s
+```
+
+Now from your BusyBox container:
+```
+[ root@curl-775f9567b5-zgnvm:/ ]$ nslookup nginx-deployment.foo
+Server:    198.51.100.4
+Address 1: 198.51.100.4
+
+Name:      nginx-deployment.foo
+Address 1: 10.100.253.135 nginx-deployment.foo.svc.cluster.local
+```
+
+As you can see above, because we deployed the pod and service in the same namespace we were able to access the DNS hostname
+
+To remove:
+```
+$ kubectl delete deployments nginx-deployment --namespace=foo
+deployment.extensions "nginx-deployment" deleted
+
+$ kubectl get deployments --namespace=foo
+No resources found.
+
+$ kubectl delete service nginx-deployment --namespace=foo
+service "nginx-deployment" deleted
+
+$ kubectl get service --namespace=foo
+No resources found.
+
+$ kubectl delete namespace foo
+namespace "foo" deleted
+
+$ kubectl get namespaces
+NAME              STATUS    AGE
+dcos-kubernetes   Active    6h
+default           Active    6h
+heptio-ark        Active    6h
+kube-public       Active    6h
+kube-system       Active    6h
+```
+
+### Does any Service exist in the DNS 
+
+If none of the above is working, we might have to explore outside of the Pod. Maybe the DNS service itself isnt working. The Kubernetes master service should always work, so we can check there
+
+From the BusyBox:
+```
+[ root@curl-775f9567b5-nf6tf:/ ]$ nslookup kubernetes.default
+Server:    198.51.100.4
+Address 1: 198.51.100.4
+
+Name:      kubernetes.default
+Address 1: 10.100.0.1 kubernetes.default.svc.cluster.local
+```
+
+If this fails, you should look ingo debugging DNS through kube-proxy before debugging your pod service.
+
+### Does the Service work by IP?
+
+Lets induce an error and work through how to fix it. What we're going to do is edit the Service deployment to a different port. In our example we will use port 8080:
+```
+$ kubectl edit svc nginx-deployment
+<...>
+ports:
+  - port: 8080
+    protocol: TCP
+    targetPort: 80
+:wq
+service "nginx-deployment" edited
+```
+
+You can see now that the Service Port changed to 8080. Now try to curl the Service IP
+```
+$ kubectl get svc
+NAME               TYPE        CLUSTER-IP       EXTERNAL-IP   PORT(S)    AGE
+kubernetes         ClusterIP   10.100.0.1       <none>        443/TCP    6h
+nginx-deployment   ClusterIP   10.100.183.153   <none>        8080/TCP   34s
+
+[ root@curl-775f9567b5-nf6tf:/ ]$ curl 10.100.193.118
+<TIMEOUT>
+```
+
+If your Service is working correctly, you should be able to `curl` the Cluster-IP and get correct responses. In the situation above, this is not the case because the service and pod ports are not matching
+
+Editing this back will return us to a working state:
+```
+$ kubectl edit svc nginx-deployment
+<...>
+ports:
+  - port: 80
+    protocol: TCP
+    targetPort: 80
+:wq
+service "nginx-deployment" edited
+
+$ kubectl get svc
+NAME               TYPE        CLUSTER-IP       EXTERNAL-IP   PORT(S)   AGE
+kubernetes         ClusterIP   10.100.0.1       <none>        443/TCP   6h
+nginx-deployment   ClusterIP   10.100.183.153   <none>        80/TCP    5m
+
+### In Busybox:
+[ root@curl-775f9567b5-nf6tf:/ ]$ curl 10.100.183.153
+<!DOCTYPE html>
+<html>
+<head>
+<title>Welcome to nginx!</title>
+<style>
+    body {
+        width: 35em;
+        margin: 0 auto;
+        font-family: Tahoma, Verdana, Arial, sans-serif;
+    }
+</style>
+</head>
+<body>
+<h1>Welcome to nginx!</h1>
+<p>If you see this page, the nginx web server is successfully installed and
+working. Further configuration is required.</p>
+
+<p>For online documentation and support please refer to
+<a href="http://nginx.org/">nginx.org</a>.<br/>
+Commercial support is available at
+<a href="http://nginx.com/">nginx.com</a>.</p>
+
+<p><em>Thank you for using nginx.</em></p>
+</body>
+</html>
+```
+
+### Does the Service have any Endpoints?
+If you got this far, we assume that you have confirmed that your Service exists and is resolved by DNS. Now let’s check that the Pods you ran are actually being selected by the Service. We can now check if the Service has any Endpoints:
+```
+$ kubectl get svc
+NAME               TYPE        CLUSTER-IP       EXTERNAL-IP   PORT(S)    AGE
+kubernetes         ClusterIP   10.100.0.1       <none>        443/TCP    6h
+nginx-deployment   ClusterIP   10.100.183.153   <none>        8080/TCP   34s
+
+$ kubectl get endpoints nginx-deployment
+NAME               ENDPOINTS                 AGE
+nginx-deployment   9.0.7.17:80,9.0.9.31:80   7m
+```
+
+In this example above, because my service is working correclty I am able to get an output from `kubectl get endpoints`, however here is an example where this doesnt work if the service doesnt exist:
+```
+$ kubectl delete service nginx-deployment
+service "nginx-deployment" deleted
+
+$ kubectl get svc
+NAME         TYPE        CLUSTER-IP   EXTERNAL-IP   PORT(S)   AGE
+kubernetes   ClusterIP   10.100.0.1   <none>        443/TCP   6h
+
+$ kubectl get endpoints nginx-deployment
+Error from server (NotFound): endpoints "nginx-deployment" not found
+```
+
+
+
 
