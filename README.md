@@ -71,7 +71,4 @@ The general breakdown is below and is what this repo aims to cover:
   - Choose your Kubernetes infrastructure configuration
   - Run end-to-end tests on your cluster
   - Analyse end-to-end test results
-  - Run Node end-to-end tests
-  
-- **Troubleshooting - 10%**
-  - Troubleshoot networking
+  - Run Node end-to-end tests  
