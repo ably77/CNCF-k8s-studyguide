@@ -41,6 +41,13 @@ The general breakdown is below and is what this repo aims to cover:
   - Troubleshoot control plane failure
   - Troubleshoot worker node failure
   - Troubleshoot networking
+- **Networking - 11%**
+  - Understand Pod networking concepts
+  - Understand service networking
+  - Deploy and configure network load balancer
+  - Know how to use Ingress rules
+  - Know how to configure and use the cluster DNS
+  - Understand CNI
 
 ## WIP
 - **Security - 12%** 
@@ -65,14 +72,6 @@ The general breakdown is below and is what this repo aims to cover:
   - Run end-to-end tests on your cluster
   - Analyse end-to-end test results
   - Run Node end-to-end tests
-
-- **Networking - 11%**
-  - Understand Pod networking concepts
-  - Understand service networking
-  - Deploy and configure network load balancer
-  - Know how to use Ingress rules
-  - Know how to configure and use the cluster DNS
-  - Understand CNI
   
 - **Troubleshooting - 10%**
   - Troubleshoot networking
