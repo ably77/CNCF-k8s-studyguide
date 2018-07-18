@@ -610,3 +610,187 @@ Commercial support is available at
 </html>
 ```
 
+### Editing an Ingress
+As with any other resource you can edit an ingress in the same manner:
+```
+$ kubectl edit ingress nginx-ingress
+```
+
+### Remove your deployment
+```
+$ kubectl delete ing nginx-ingress
+ingress.extensions "nginx-ingress" deleted
+
+$ kubectl get ing
+No resources found.
+
+$ kubectl delete service nginx-deployment
+service "nginx-deployment" deleted
+
+$ kubectl get svc
+NAME         TYPE        CLUSTER-IP   EXTERNAL-IP   PORT(S)   AGE
+kubernetes   ClusterIP   10.100.0.1   <none>        443/TCP   3h
+
+$ kubectl delete deployment nginx-deployment
+deployment.extensions "nginx-deployment" deleted
+
+$ kubectl get deployments
+No resources found.
+```
+
+### Know how to configure and use the cluster DNS
+Reference from kubernetes.io:
+- [DNS for Services and Pods](https://kubernetes.io/docs/concepts/services-networking/dns-pod-service/)
+
+Kubernetes DNS schedules a DNS Pod and Service on the cluster, and configures the kubelets to tell individual containers to use the DNS Service’s IP to resolve DNS names.
+
+Every Service defined in the cluster (including the DNS server itself) is assigned a DNS name. By default, a client Pod’s DNS search list will include the Pod’s own namespace and the cluster’s default domain. This is best illustrated by example:
+```
+Assume a Service named foo in the Kubernetes namespace bar. A Pod running in namespace bar can look up this service by simply doing a DNS query for foo. A Pod running in namespace quux can look up this service by doing a DNS query for foo.bar.
+```
+
+### Pods
+
+A Records:
+When enabled, pods are assigned a DNS A record in the form of `“pod-ip-address.my-namespace.pod.cluster.local”`.
+
+For example, a pod with IP 1.2.3.4 in the namespace default with a DNS name of cluster.local would have an entry: `1-2-3-4.default.pod.cluster.local`.
+
+Pod's hostname and subdomain fields
+Currently when a pod is created, its hostname is the Pod’s metadata.name value.
+
+The Pod spec has an optional hostname field, which can be used to specify the Pod’s hostname. When specified, it takes precedence over the Pod’s name to be the hostname of the pod. For example, given a Pod with hostname set to “my-host”, the Pod will have its hostname set to “my-host”.
+
+The Pod spec also has an optional subdomain field which can be used to specify its subdomain. For example, a Pod with hostname set to “foo”, and subdomain set to “bar”, in namespace “my-namespace”, will have the fully qualified domain name (FQDN) “foo.bar.my-namespace.svc.cluster.local”.
+
+Here is an example:
+```
+apiVersion: v1
+kind: Service
+metadata:
+  name: default-subdomain
+spec:
+  selector:
+    name: busybox
+  clusterIP: None
+  ports:
+  - name: foo # Actually, no port is needed.
+    port: 1234
+    targetPort: 1234
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: busybox1
+  labels:
+    name: busybox
+spec:
+  hostname: busybox-1
+  subdomain: default-subdomain
+  containers:
+  - image: busybox
+    command:
+      - sleep
+      - "3600"
+    name: busybox
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: busybox2
+  labels:
+    name: busybox
+spec:
+  hostname: busybox-2
+  subdomain: default-subdomain
+  containers:
+  - image: busybox
+    command:
+      - sleep
+      - "3600"
+    name: busybox
+```
+
+Pod DNS Policy:
+DNS policies can be set on a per-pod basis. Currently Kubernetes supports the following pod-specific DNS policies. These policies are specified in the dnsPolicy field of a Pod Spec.
+- “Default“: The Pod inherits the name resolution configuration from the node that the pods run on. See related discussion for more details.
+- “ClusterFirst“: Any DNS query that does not match the configured cluster domain suffix, such as “www.kubernetes.io”, is forwarded to the upstream nameserver inherited from the node. Cluster administrators may have extra stub-domain and upstream DNS servers configured. See related discussion for details on how DNS queries are handled in those cases.
+- “ClusterFirstWithHostNet“: For Pods running with hostNetwork, you should explicitly set its DNS policy “ClusterFirstWithHostNet”.
+- “None“: A new option value introduced in Kubernetes v1.9 (Beta in v1.10). It allows a Pod to ignore DNS settings from the Kubernetes environment. All DNS settings are supposed to be provided using the dnsConfig field in the Pod Spec. See DNS config subsection below.
+
+Pod DNS Config:
+Kubernetes v1.9 introduces an Alpha feature (Beta in v1.10) that allows users more control on the DNS settings for a Pod. This feature is enabled by default in v1.10.
+
+Below are the properties a user can specify in the dnsConfig field:
+- nameservers: a list of IP addresses that will be used as DNS servers for the Pod. There can be at most 3 IP addresses specified. When the Pod’s dnsPolicy is set to “None”, the list must contain at least one IP address, otherwise this property is optional. The servers listed will be combined to the base nameservers generated from the specified DNS policy with duplicate addresses removed.
+- searches: a list of DNS search domains for hostname lookup in the Pod. This property is optional. When specified, the provided list will be merged into the base search domain names generated from the chosen DNS policy. Duplicate domain names are removed. Kubernetes allows for at most 6 search domains.
+- options: an optional list of objects where each object may have a name property (required) and a value property (optional). The contents in this property will be merged to the options generated from the specified DNS policy. Duplicate entries are removed.
+
+Here is an example pod with custom DNS settings. We can name this `custom-dns.yaml`
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  namespace: default
+  name: dns-example
+spec:
+  containers:
+    - name: test
+      image: nginx
+  dnsPolicy: "None"
+  dnsConfig:
+    nameservers:
+      - 1.2.3.4
+    searches:
+      - ns1.svc.cluster.local
+      - my.dns.search.suffix
+    options:
+      - name: ndots
+        value: "2"
+      - name: edns0
+```
+
+To see that this Pod inherited custom DNS values we first deploy the `custom-dns.yaml`:
+```
+$ kubectl create -f custom-dns.yaml
+pod "dns-example" created
+
+$ kubectl get pods -o wide
+NAME          READY     STATUS    RESTARTS   AGE       IP         NODE
+dns-example   1/1       Running   0          1m        9.0.9.25   kube-node-0-kubelet.kubernetes.mesos
+```
+
+Now that the pod is in a Running state, exec into the container and check out the `/etc/resolv.conf` file:
+```
+$ kubectl exec -it dns-example bash
+root@dns-example:/#
+
+root@dns-example:/# cat /etc/resolv.conf
+nameserver 1.2.3.4
+search ns1.svc.cluster.local my.dns.search.suffix
+options ndots:2 edns0
+
+root@dns-example:/# exit
+exit
+```
+
+## Understand CNI
+Reference from kubernetes.io
+- [Concepts - Network Plugins](https://kubernetes.io/docs/concepts/extend-kubernetes/compute-storage-net/network-plugins/)
+
+Other references:
+- [Official CNI Github](https://github.com/containernetworking/cni)
+- [CNI blogpost](http://www.dasblinkenlichten.com/understanding-cni-container-networking-interface/)
+
+From the Official CNI Github:
+CNI (Container Network Interface), a Cloud Native Computing Foundation project, consists of a specification and libraries for writing plugins to configure network interfaces in Linux containers, along with a number of supported plugins. CNI concerns itself only with network connectivity of containers and removing allocated resources when the container is deleted. Because of this focus, CNI has a wide range of support and the specification is simple to implement.
+
+Why CNI?:
+Application containers on Linux are a rapidly evolving area, and within this area networking is not well addressed as it is highly environment-specific. We believe that many container runtimes and orchestrators will seek to solve the same problem of making the network layer pluggable.
+
+How CNI is deployed in Kubernetes:
+The CNI plugin is selected by passing Kubelet the --network-plugin=cni command-line option. Kubelet reads a file from --cni-conf-dir (default /etc/cni/net.d) and uses the CNI configuration from that file to set up each pod’s network. The CNI configuration file must match the CNI specification, and any required CNI plugins referenced by the configuration must be present in --cni-bin-dir (default /opt/cni/bin).
+
+If there are multiple CNI configuration files in the directory, the first one in lexicographic order of file name is used.
+
+In addition to the CNI plugin specified by the configuration file, Kubernetes requires the standard CNI lo plugin, at minimum version 0.2.0
