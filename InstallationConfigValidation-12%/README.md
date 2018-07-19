@@ -147,7 +147,361 @@ Reference from kubernetes.io:
 Following Kelsey Hightower's guide on Provisioning a CA and Generating TLS Certificates will allow us to generate TLS certificates for the etcd, kube-apiserver, kube-controller-manager, kube-scheduler, kubelet, and kube-proxy
 - [Provisioning a CA and Generating TLS Certificates](https://github.com/kelseyhightower/kubernetes-the-hard-way/blob/master/docs/04-certificate-authority.md)
 
-The section `Distribute the Client and Server Certificates` is abstracted to use the `gcloud` CLI so here are some additional instructions if you are not on GCP:
+#### Certificate Authority
+Provision a Certificate Authority that can be used to generate additional TLS certificates. Generate the CA configuration file, certificate, and private key:
+```
+{
+
+cat > ca-config.json <<EOF
+{
+  "signing": {
+    "default": {
+      "expiry": "8760h"
+    },
+    "profiles": {
+      "kubernetes": {
+        "usages": ["signing", "key encipherment", "server auth", "client auth"],
+        "expiry": "8760h"
+      }
+    }
+  }
+}
+EOF
+
+cat > ca-csr.json <<EOF
+{
+  "CN": "Kubernetes",
+  "key": {
+    "algo": "rsa",
+    "size": 2048
+  },
+  "names": [
+    {
+      "C": "US",
+      "L": "Portland",
+      "O": "Kubernetes",
+      "OU": "CA",
+      "ST": "Oregon"
+    }
+  ]
+}
+EOF
+
+cfssl gencert -initca ca-csr.json | cfssljson -bare ca
+
+}
+```
+
+#### Client and Server Certificates
+Generate client and server certificates for each Kubernetes component and a client certificate for the Kubernetes admin user.
+
+Generate the Admin Client Certificate and private key:
+```
+{
+
+cat > admin-csr.json <<EOF
+{
+  "CN": "admin",
+  "key": {
+    "algo": "rsa",
+    "size": 2048
+  },
+  "names": [
+    {
+      "C": "US",
+      "L": "Portland",
+      "O": "system:masters",
+      "OU": "Kubernetes The Hard Way",
+      "ST": "Oregon"
+    }
+  ]
+}
+EOF
+
+cfssl gencert \
+  -ca=ca.pem \
+  -ca-key=ca-key.pem \
+  -config=ca-config.json \
+  -profile=kubernetes \
+  admin-csr.json | cfssljson -bare admin
+
+}
+```
+
+Generate the Kubelet Client Certificate. Generate a certificate and private key for each Kubernetes worker node:
+
+Worker node 0 - Be sure to fill in the `<WORKER_X_PUBLIC_IP>` and `<WORKER_X_PRIVATE_IP>` values before running:
+```
+cat > worker-0-csr.json <<EOF
+{
+  "CN": "system:node:worker-0",
+  "key": {
+    "algo": "rsa",
+    "size": 2048
+  },
+  "names": [
+    {
+      "C": "US",
+      "L": "Portland",
+      "O": "system:nodes",
+      "OU": "Kubernetes The Hard Way",
+      "ST": "Oregon"
+    }
+  ]
+}
+EOF
+
+EXTERNAL_IP=<WORKER_0_PUBLIC_IP>
+
+INTERNAL_IP=<WORKER_0_PRIVATE_IP>
+
+cfssl gencert \
+  -ca=ca.pem \
+  -ca-key=ca-key.pem \
+  -config=ca-config.json \
+  -hostname=worker-0,${EXTERNAL_IP},${INTERNAL_IP} \
+  -profile=kubernetes \
+  worker-0-csr.json | cfssljson -bare worker-0
+```
+
+Worker node 1 - - Be sure to fill in the `<WORKER_X_PUBLIC_IP>` and `<WORKER_X_PRIVATE_IP>` values before running:
+```
+cat > worker-1-csr.json <<EOF
+{
+  "CN": "system:node:worker-1",
+  "key": {
+    "algo": "rsa",
+    "size": 2048
+  },
+  "names": [
+    {
+      "C": "US",
+      "L": "Portland",
+      "O": "system:nodes",
+      "OU": "Kubernetes The Hard Way",
+      "ST": "Oregon"
+    }
+  ]
+}
+EOF
+
+EXTERNAL_IP=<WORKER_1_PUBLIC_IP>
+
+INTERNAL_IP=<WORKER_1_PRIVATE_IP>
+
+cfssl gencert \
+  -ca=ca.pem \
+  -ca-key=ca-key.pem \
+  -config=ca-config.json \
+  -hostname=worker-1,${EXTERNAL_IP},${INTERNAL_IP} \
+  -profile=kubernetes \
+  worker-1-csr.json | cfssljson -bare worker-1
+```
+
+Worker Node 2 - - Be sure to fill in the `<WORKER_X_PUBLIC_IP>` and `<WORKER_X_PRIVATE_IP>` values before running:
+```
+cat > worker-2-csr.json <<EOF
+{
+  "CN": "system:node:worker-2",
+  "key": {
+    "algo": "rsa",
+    "size": 2048
+  },
+  "names": [
+    {
+      "C": "US",
+      "L": "Portland",
+      "O": "system:nodes",
+      "OU": "Kubernetes The Hard Way",
+      "ST": "Oregon"
+    }
+  ]
+}
+EOF
+
+EXTERNAL_IP=<WORKER_2_PUBLIC_IP>
+
+INTERNAL_IP=<WORKER_2_PRIVATE_IP>
+
+cfssl gencert \
+  -ca=ca.pem \
+  -ca-key=ca-key.pem \
+  -config=ca-config.json \
+  -hostname=worker-2,${EXTERNAL_IP},${INTERNAL_IP} \
+  -profile=kubernetes \
+  worker-2-csr.json | cfssljson -bare worker-2
+```
+
+Generate the `kube-controller-manager` client certificate and private key:
+```
+{
+
+cat > kube-controller-manager-csr.json <<EOF
+{
+  "CN": "system:kube-controller-manager",
+  "key": {
+    "algo": "rsa",
+    "size": 2048
+  },
+  "names": [
+    {
+      "C": "US",
+      "L": "Portland",
+      "O": "system:kube-controller-manager",
+      "OU": "Kubernetes The Hard Way",
+      "ST": "Oregon"
+    }
+  ]
+}
+EOF
+
+cfssl gencert \
+  -ca=ca.pem \
+  -ca-key=ca-key.pem \
+  -config=ca-config.json \
+  -profile=kubernetes \
+  kube-controller-manager-csr.json | cfssljson -bare kube-controller-manager
+
+}
+```
+
+Generate the `kube-proxy` client certificate and private key:
+```
+{
+
+cat > kube-proxy-csr.json <<EOF
+{
+  "CN": "system:kube-proxy",
+  "key": {
+    "algo": "rsa",
+    "size": 2048
+  },
+  "names": [
+    {
+      "C": "US",
+      "L": "Portland",
+      "O": "system:node-proxier",
+      "OU": "Kubernetes The Hard Way",
+      "ST": "Oregon"
+    }
+  ]
+}
+EOF
+
+cfssl gencert \
+  -ca=ca.pem \
+  -ca-key=ca-key.pem \
+  -config=ca-config.json \
+  -profile=kubernetes \
+  kube-proxy-csr.json | cfssljson -bare kube-proxy
+
+}
+```
+
+Generate the `kube-scheduler` client certificate and private key:
+```
+{
+
+cat > kube-scheduler-csr.json <<EOF
+{
+  "CN": "system:kube-scheduler",
+  "key": {
+    "algo": "rsa",
+    "size": 2048
+  },
+  "names": [
+    {
+      "C": "US",
+      "L": "Portland",
+      "O": "system:kube-scheduler",
+      "OU": "Kubernetes The Hard Way",
+      "ST": "Oregon"
+    }
+  ]
+}
+EOF
+
+cfssl gencert \
+  -ca=ca.pem \
+  -ca-key=ca-key.pem \
+  -config=ca-config.json \
+  -profile=kubernetes \
+  kube-scheduler-csr.json | cfssljson -bare kube-scheduler
+
+}
+```
+
+Generate the Kubernetes API Server certificate and private key - remember to replace the `<MASTER_PUBLIC_IP>`:
+```
+{
+
+KUBERNETES_PUBLIC_ADDRESS=<MASTER_PUBLIC_IP>
+
+cat > kubernetes-csr.json <<EOF
+{
+  "CN": "kubernetes",
+  "key": {
+    "algo": "rsa",
+    "size": 2048
+  },
+  "names": [
+    {
+      "C": "US",
+      "L": "Portland",
+      "O": "Kubernetes",
+      "OU": "Kubernetes The Hard Way",
+      "ST": "Oregon"
+    }
+  ]
+}
+EOF
+
+cfssl gencert \
+  -ca=ca.pem \
+  -ca-key=ca-key.pem \
+  -config=ca-config.json \
+  -hostname=10.32.0.1,10.240.0.10,10.240.0.11,10.240.0.12,${KUBERNETES_PUBLIC_ADDRESS},127.0.0.1,kubernetes.default \
+  -profile=kubernetes \
+  kubernetes-csr.json | cfssljson -bare kubernetes
+
+}
+```
+
+Generate the service-account certificate and private key:
+```
+{
+
+cat > service-account-csr.json <<EOF
+{
+  "CN": "service-accounts",
+  "key": {
+    "algo": "rsa",
+    "size": 2048
+  },
+  "names": [
+    {
+      "C": "US",
+      "L": "Portland",
+      "O": "Kubernetes",
+      "OU": "Kubernetes The Hard Way",
+      "ST": "Oregon"
+    }
+  ]
+}
+EOF
+
+cfssl gencert \
+  -ca=ca.pem \
+  -ca-key=ca-key.pem \
+  -config=ca-config.json \
+  -profile=kubernetes \
+  service-account-csr.json | cfssljson -bare service-account
+
+}
+```
+
+#### Distribute the Client and Server Certificates:
+
 Copy the appropriate certificates and private keys to the 3 Kubernetes Worker instances:
 ```
 $ scp -i <SSH_Key_PATH> ca.pem  worker-0-key.pem worker-0.pem ubuntu@<WORKER_0_PUBLIC_IP>:~
