@@ -1,4 +1,4 @@
-This document is a self-made Lab guide based off of the CKA Curriculum v1.8.0
+This Repo is based off of the [CKA Curriculum v1.9.0](https://github.com/cncf/curriculum/blob/master/certified_kubernetes_administrator_exam_v1.9.0.pdf)
 
 # Security - 12%
 Reference from kubernetes.io:
