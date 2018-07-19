@@ -522,70 +522,28 @@ In this section you will generate kubeconfig files for the controller manager, k
 #### The kubelet Kubernetes Configuration File:
 Since I am only using 1 Kubernetes Master Node in this installation, remember to replace the `<MASTER_0_PUBLIC_IP>` parameter on the Worker nodes:
 
-Worker 0 - remember to replace the `<MASTER_0_PUBLIC_IP>`:
+Generate a kubeconfig file for each worker node. Be sure to replace the `${KUBERNETES_MASTER_PUBLIC_IP}` parameter before executing:
 ```
-kubectl config set-cluster kubernetes-the-hard-way \
+for instance in worker-0 worker-1 worker-2; do
+  kubectl config set-cluster kubernetes-the-hard-way \
     --certificate-authority=ca.pem \
     --embed-certs=true \
-    --server=https://<MASTER_0_PUBLIC_IP>:6443 \
-    --kubeconfig=worker-0.kubeconfig
+    --server=https://${KUBERNETES_MASTER_PUBLIC_IP}:6443 \
+    --kubeconfig=${instance}.kubeconfig
 
-    kubectl config set-credentials system:node:worker-0 \
-    --client-certificate=worker-0.pem \
-    --client-key=worker-0-key.pem \
+  kubectl config set-credentials system:node:${instance} \
+    --client-certificate=${instance}.pem \
+    --client-key=${instance}-key.pem \
     --embed-certs=true \
-    --kubeconfig=worker-0.kubeconfig
+    --kubeconfig=${instance}.kubeconfig
 
   kubectl config set-context default \
     --cluster=kubernetes-the-hard-way \
-    --user=system:node:worker-0 \
-    --kubeconfig=worker-0.kubeconfig
+    --user=system:node:${instance} \
+    --kubeconfig=${instance}.kubeconfig
 
-kubectl config use-context default --kubeconfig=worker-0.kubeconfig
-```
-
-Worker 1 - remember to replace the `<MASTER_0_PUBLIC_IP>`:
-```
-kubectl config set-cluster kubernetes-the-hard-way \
-    --certificate-authority=ca.pem \
-    --embed-certs=true \
-    --server=https://<MASTER_0_PUBLIC_IP>:6443 \
-    --kubeconfig=worker-1.kubeconfig
-
-    kubectl config set-credentials system:node:worker-1 \
-    --client-certificate=worker-1.pem \
-    --client-key=worker-1-key.pem \
-    --embed-certs=true \
-    --kubeconfig=worker-1.kubeconfig
-
-  kubectl config set-context default \
-    --cluster=kubernetes-the-hard-way \
-    --user=system:node:worker-1 \
-    --kubeconfig=worker-1.kubeconfig
-
-kubectl config use-context default --kubeconfig=worker-1.kubeconfig
-```
-
-Worker 2 - remember to replace the `<MASTER_0_PUBLIC_IP>`:
-```
-kubectl config set-cluster kubernetes-the-hard-way \
-    --certificate-authority=ca.pem \
-    --embed-certs=true \
-    --server=https://<MASTER_0_PUBLIC_IP>:6443 \
-    --kubeconfig=worker-2.kubeconfig
-
-    kubectl config set-credentials system:node:worker-2 \
-    --client-certificate=worker-2.pem \
-    --client-key=worker-2-key.pem \
-    --embed-certs=true \
-    --kubeconfig=worker-2.kubeconfig
-
-  kubectl config set-context default \
-    --cluster=kubernetes-the-hard-way \
-    --user=system:node:worker-2 \
-    --kubeconfig=worker-2.kubeconfig
-
-kubectl config use-context default --kubeconfig=worker-2.kubeconfig
+  kubectl config use-context default --kubeconfig=${instance}.kubeconfig
+done
 ```
 
 #### The kube-proxy Kubernetes Configuration File.
