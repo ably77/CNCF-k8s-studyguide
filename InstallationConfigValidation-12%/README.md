@@ -510,7 +510,7 @@ $ scp -i <SSH_Key_PATH> ca.pem  worker-2-key.pem worker-2.pem ubuntu@<WORKER_2_P
 ```
 Copy the appropriate certificates and private keys to each Kubernetes master node (Controller instance):
 ```
-scp -i ~/.ssh/CNCF-k8s.pem ca.pem kubernetes-key.pem kubernetes.pem service-account-key.pem service-account.pem ca-key.pem ubuntu@<MASTER_0_PUBLIC_IP>:~
+scp -i <SSH_Key_PATH> ca.pem kubernetes-key.pem kubernetes.pem service-account-key.pem service-account.pem ca-key.pem ubuntu@<MASTER_0_PUBLIC_IP>:~
 ```
 
 ### Generate Kubernetes Files for Authentication
@@ -520,7 +520,9 @@ Following Kelsey Hightower's guide on Provisioning a CA and Generating TLS Certi
 In this section you will generate kubeconfig files for the controller manager, kubelet, kube-proxy, and scheduler clients and the admin user.
 
 #### The kubelet Kubernetes Configuration File:
-Since I am only using 1 Kubernetes Master Node in this installation, we will just use the Master Public IP:
+Since I am only using 1 Kubernetes Master Node in this installation, remember to replace the `<MASTER_0_PUBLIC_IP>` parameter on the Worker nodes:
+
+Worker 0 - remember to replace the `<MASTER_0_PUBLIC_IP>`:
 ```
 kubectl config set-cluster kubernetes-the-hard-way \
     --certificate-authority=ca.pem \
@@ -542,6 +544,7 @@ kubectl config set-cluster kubernetes-the-hard-way \
 kubectl config use-context default --kubeconfig=worker-0.kubeconfig
 ```
 
+Worker 1 - remember to replace the `<MASTER_0_PUBLIC_IP>`:
 ```
 kubectl config set-cluster kubernetes-the-hard-way \
     --certificate-authority=ca.pem \
@@ -563,6 +566,7 @@ kubectl config set-cluster kubernetes-the-hard-way \
 kubectl config use-context default --kubeconfig=worker-1.kubeconfig
 ```
 
+Worker 2 - remember to replace the `<MASTER_0_PUBLIC_IP>`:
 ```
 kubectl config set-cluster kubernetes-the-hard-way \
     --certificate-authority=ca.pem \
