@@ -7,13 +7,352 @@ Reference from kubernetes.io:
 Reference from kubernetes.io:
 - [Designing and Preparing](https://kubernetes.io/docs/setup/scratch/#designing-and-preparing)
 
+### Cloud Provider:
+Kubernetes has a concept of a Cloud Provider which is a module that provides an interface for managing TCP Load Balancers, Nodes (Instances) and Networking Routes. This is optional, but could be helpful extra tooling in your Kubernetes deployment
+
+### Nodes:
+- You can use virtual or physical machines.
+- While you can build a cluster with 1 machine, in order to run all the examples and tests you need at least 4 nodes.
+- Many Getting-started-guides make a distinction between the master node and regular nodes. This is not strictly necessary.
+- Nodes will need to run some version of Linux with the x86_64 architecture. It may be possible to run on other OSes and Architectures, but this guide does not try to assist with that.
+- Apiserver and etcd together are fine on a machine with 1 core and 1GB RAM for clusters with 10s of nodes. Larger or more active clusters may benefit from more cores.
+- Other nodes can have any reasonable amount of memory and any number of cores. They need not have identical configurations.
+
+### Network:
+Kubernetes allocates an IP address to each pod. A process in one pod should be able to communicate with another pod using the IP of the second pod. This is more extensively discussed in the Networking section of this repo. At a high level, this connectivity can be accomplished in two ways:
+- Using an overlay network
+	- An overlay network obscures the underlying network architecture from the pod network through traffic encapsulation (for example vxlan).
+	- Encapsulation reduces performance, though exactly how much depends on your solution.
+-Without an overlay network
+	- Configure the underlying network fabric (switches, routers, etc.) to be aware of pod IP addresses.
+	- This does not require the encapsulation provided by an overlay, and so can achieve better performance.
+
+You will need to select an address range for the Pod IPs, below are a couple approaches:
+- GCE: each project has its own 10.0.0.0/8. Carve off a /16 for each Kubernetes cluster from that space, which leaves room for several clusters. Each node gets a further subdivision of this space.
+- AWS: use one VPC for whole organization, carve off a chunk for each cluster, or use different VPC for different clusters.
+
+Allocate one CIDR subnet for each node’s PodIPs, or a single large CIDR from which smaller CIDRs are automatically allocated to each node. You should plan this to the number of pods you expect to run on each node. Changing the range (i.e. from /16 to /24) is possible, but note that you may risk disrupting the services and pods that already use it. An example of sizing is below:
+- You need max-pods-per-node * max-number-of-nodes IPs in total. A /24 per node supports 254 pods per machine and is a common choice. If IPs are scarce, a /26 (62 pods per machine) or even a /27 (30 pods) may be sufficient.
+- For example, use 10.10.0.0/16 as the range for the cluster, with up to 256 nodes using 10.10.0.0/24 through 10.10.255.0/24, respectively.
+
+Lastly for the Master Node:
+- Needs a static IP
+- Call this MASTER_IP.
+- Open any firewalls to allow access to the apiserver ports 80 and/or 443.
+- Enable ipv4 forwarding sysctl, net.ipv4.ip_forward = 1
+
+### Software Binaries - see [kubernetes.io](kubernetes.io) for the latest binaries and instructions
+- etcd
+- A container runner, one of:
+	- docker
+	- rkt
+- Kubernetes
+- kubelet
+- kube-proxy
+- kube-apiserver
+- kube-controller-manager
+- kube-scheduler
+
+### Security - There are two main options:
+- Access the apiserver using HTTP.
+	- Use a firewall for security.
+	- This is easier to setup.
+- Access the apiserver using HTTPS
+	- Use https with certs, and credentials for user.
+	- This is the recommended approach.
+	- Configuring certs can be tricky.
+
+#### HTTPS
+For the HTTPS approach, you will need to prepare certs and credentials
+- The master needs a cert to act as an HTTPS server.
+- The kubelets optionally need certs to identify themselves as clients of the master, and when serving its own API over HTTPS.
+
+You will have to generate the following files:
+- CA_CERT - put in on node where apiserver runs, for example in `/srv/kubernetes/ca.crt`
+- MASTER_CERT - signed by CA_CERT and put in on node where apiserver runs, for example in `/srv/kubernetes/server.crt`
+- MASTER_KEY - put in on node where apiserver runs, for example in `/srv/kubernetes/server.key`
+- KUBELET_CERT - optional
+- KUBELET_KEY - optional
+
+#### Credentials
+The admin user as well as any other users will need a token or a password to identify them. tokens and passwords need to be stored in a file for the apiserver to read. This kubernetes.io documentation uses `/var/lib/kube-apiserver/known_tokens.csv`
+
+For distributing credentials to clients, the convention in Kubernetes is to put the credentials into a kubeconfig file which is typically at `$HOME/.kube/config`. You need to add certs, keys, and the master IP to the kubeconfig file.
+
 ## Install Kubernetes masters and nodes, including the use of TLS bootstrapping
 Reference from kubernetes.io:
 - [Creating a Custom Cluster from Scratch](https://kubernetes.io/docs/setup/scratch/)
 
+Other References:
+- [Github: Kelsey Hightower's - Kubernetes the hard way](https://github.com/kelseyhightower/kubernetes-the-hard-way)
+
+Here we will install Kubernetes the hard way from scratch following Kelsey Hightower's guide.
+
+### Prerequisites
+There are many guides out there on how to create instances in the cloud so we will skip that for this guide. For this example I will be using the base Ubuntu 16.04 image on AWS with these specs:
+- t2.large (2 CPU, 8GB RAM, 20GB Storage)
+	- 1x Masters
+	- 3x Kubernetes Worker Agents
+- Using a /20 CIDR block
+- Security Group Rules - SSH (Port 22), Allow All Traffic (tcp, udp, ICMP)
+* See Security section of this Repo for more details on locking down your cluster
+
+#### Client Tools
+On your Local Machine, install the `cfssl`, `cfssljson`, and `kubectl` client tools. These will be used to provision a PKI Insfrastructure and generate TLS certificates
+
+#### CFSSL Installation:
+OSX:
+```
+$ curl -o cfssl https://pkg.cfssl.org/R1.2/cfssl_darwin-amd64
+$ curl -o cfssljson https://pkg.cfssl.org/R1.2/cfssljson_darwin-amd64
+$ chmod +x cfssl cfssljson
+$ sudo mv cfssl cfssljson /usr/local/bin/
+
+OR if Homebrew is installed:
+
+$ brew install cfssl
+```
+
+Linux:
+```
+$ wget -q --show-progress --https-only --timestamping \
+    https://pkg.cfssl.org/R1.2/cfssl_linux-amd64 \
+    https://pkg.cfssl.org/R1.2/cfssljson_linux-amd64
+ 
+$ chmod +x cfssl_linux-amd64 cfssljson_linux-amd64
+
+$ sudo mv cfssl_linux-amd64 /usr/local/bin/cfssl
+
+$ sudo mv cfssljson_linux-amd64 /usr/local/bin/cfssljson
+```
+
+Verify that `cfssl` version 1.2.0 or higher is installed:
+```
+$ cfssl version
+Version: 1.3.2
+Revision: dev
+Runtime: go1.10.2
+```
+
+#### Install kubectl:
+
+To install kubectl, the Kubernetes Command Line tool, follow the instructions below:
+- [Install and Set Up kubectl](https://kubernetes.io/docs/tasks/tools/install-kubectl/)
+
 ## Configure secure cluster communications
 Reference from kubernetes.io:
 - [Manage TLS Certificates in a Cluster](https://kubernetes.io/docs/tasks/tls/managing-tls-in-a-cluster/)
+
+### CA and TLS Certificates
+Following Kelsey Hightower's guide on Provisioning a CA and Generating TLS Certificates will allow us to generate TLS certificates for the etcd, kube-apiserver, kube-controller-manager, kube-scheduler, kubelet, and kube-proxy
+- [Provisioning a CA and Generating TLS Certificates](https://github.com/kelseyhightower/kubernetes-the-hard-way/blob/master/docs/04-certificate-authority.md)
+
+The section `Distribute the Client and Server Certificates` is abstracted to use the `gcloud` CLI so here are some additional instructions if you are not on GCP:
+Copy the appropriate certificates and private keys to the 3 Kubernetes Worker instances:
+```
+$ scp -i <SSH_Key_PATH> ca.pem  worker-0-key.pem worker-0.pem ubuntu@<WORKER_0_PUBLIC_IP>:~
+$ scp -i <SSH_Key_PATH> ca.pem  worker-1-key.pem worker-1.pem ubuntu@<WORKER_1_PUBLIC_IP>:~
+$ scp -i <SSH_Key_PATH> ca.pem  worker-2-key.pem worker-2.pem ubuntu@<WORKER_2_PUBLIC_IP>:~
+```
+Copy the appropriate certificates and private keys to each Kubernetes master node (Controller instance):
+```
+scp -i ~/.ssh/CNCF-k8s.pem ca.pem kubernetes-key.pem kubernetes.pem service-account-key.pem service-account.pem ca-key.pem ubuntu@<MASTER_0_PUBLIC_IP>:~
+```
+
+### Generate Kubernetes Files for Authentication
+Following Kelsey Hightower's guide on Provisioning a CA and Generating TLS Certificates will allow us to generate Kubernetes Configuration Files, also known as kubeconfigs, which enable K8s clients to locate and authenticate to the K8s API servers
+- [Generating Kubernetes Configuration Files for Authentication](https://github.com/kelseyhightower/kubernetes-the-hard-way/blob/master/docs/05-kubernetes-configuration-files.md)
+
+In this section you will generate kubeconfig files for the controller manager, kubelet, kube-proxy, and scheduler clients and the admin user.
+
+#### The kubelet Kubernetes Configuration File:
+Since I am only using 1 Kubernetes Master Node in this installation, we will just use the Master Public IP:
+```
+kubectl config set-cluster kubernetes-the-hard-way \
+    --certificate-authority=ca.pem \
+    --embed-certs=true \
+    --server=https://<MASTER_0_PUBLIC_IP>:6443 \
+    --kubeconfig=worker-0.kubeconfig
+
+    kubectl config set-credentials system:node:worker-0 \
+    --client-certificate=worker-0.pem \
+    --client-key=worker-0-key.pem \
+    --embed-certs=true \
+    --kubeconfig=worker-0.kubeconfig
+
+  kubectl config set-context default \
+    --cluster=kubernetes-the-hard-way \
+    --user=system:node:worker-0 \
+    --kubeconfig=worker-0.kubeconfig
+
+kubectl config use-context default --kubeconfig=worker-0.kubeconfig
+```
+
+```
+kubectl config set-cluster kubernetes-the-hard-way \
+    --certificate-authority=ca.pem \
+    --embed-certs=true \
+    --server=https://<MASTER_0_PUBLIC_IP>:6443 \
+    --kubeconfig=worker-1.kubeconfig
+
+    kubectl config set-credentials system:node:worker-1 \
+    --client-certificate=worker-1.pem \
+    --client-key=worker-1-key.pem \
+    --embed-certs=true \
+    --kubeconfig=worker-1.kubeconfig
+
+  kubectl config set-context default \
+    --cluster=kubernetes-the-hard-way \
+    --user=system:node:worker-1 \
+    --kubeconfig=worker-1.kubeconfig
+
+kubectl config use-context default --kubeconfig=worker-1.kubeconfig
+```
+
+```
+kubectl config set-cluster kubernetes-the-hard-way \
+    --certificate-authority=ca.pem \
+    --embed-certs=true \
+    --server=https://<MASTER_0_PUBLIC_IP>:6443 \
+    --kubeconfig=worker-2.kubeconfig
+
+    kubectl config set-credentials system:node:worker-2 \
+    --client-certificate=worker-2.pem \
+    --client-key=worker-2-key.pem \
+    --embed-certs=true \
+    --kubeconfig=worker-2.kubeconfig
+
+  kubectl config set-context default \
+    --cluster=kubernetes-the-hard-way \
+    --user=system:node:worker-2 \
+    --kubeconfig=worker-2.kubeconfig
+
+kubectl config use-context default --kubeconfig=worker-2.kubeconfig
+```
+
+#### The kube-proxy Kubernetes Configuration File.
+
+Swap out the `${KUBERNETES_PUBLIC_ADDRESS}` before executing the command:
+```
+{
+  kubectl config set-cluster kubernetes-the-hard-way \
+    --certificate-authority=ca.pem \
+    --embed-certs=true \
+    --server=https://${KUBERNETES_PUBLIC_ADDRESS}:6443 \
+    --kubeconfig=kube-proxy.kubeconfig
+
+  kubectl config set-credentials system:kube-proxy \
+    --client-certificate=kube-proxy.pem \
+    --client-key=kube-proxy-key.pem \
+    --embed-certs=true \
+    --kubeconfig=kube-proxy.kubeconfig
+
+  kubectl config set-context default \
+    --cluster=kubernetes-the-hard-way \
+    --user=system:kube-proxy \
+    --kubeconfig=kube-proxy.kubeconfig
+
+  kubectl config use-context default --kubeconfig=kube-proxy.kubeconfig
+}
+```
+
+#### The kube-controller-manager Kubernetes configuration file
+```
+{
+  kubectl config set-cluster kubernetes-the-hard-way \
+    --certificate-authority=ca.pem \
+    --embed-certs=true \
+    --server=https://127.0.0.1:6443 \
+    --kubeconfig=kube-controller-manager.kubeconfig
+
+  kubectl config set-credentials system:kube-controller-manager \
+    --client-certificate=kube-controller-manager.pem \
+    --client-key=kube-controller-manager-key.pem \
+    --embed-certs=true \
+    --kubeconfig=kube-controller-manager.kubeconfig
+
+  kubectl config set-context default \
+    --cluster=kubernetes-the-hard-way \
+    --user=system:kube-controller-manager \
+    --kubeconfig=kube-controller-manager.kubeconfig
+
+  kubectl config use-context default --kubeconfig=kube-controller-manager.kubeconfig
+}
+```
+
+#### The kube-scheduler Kubernetes Configuration File
+```
+{
+  kubectl config set-cluster kubernetes-the-hard-way \
+    --certificate-authority=ca.pem \
+    --embed-certs=true \
+    --server=https://127.0.0.1:6443 \
+    --kubeconfig=kube-scheduler.kubeconfig
+
+  kubectl config set-credentials system:kube-scheduler \
+    --client-certificate=kube-scheduler.pem \
+    --client-key=kube-scheduler-key.pem \
+    --embed-certs=true \
+    --kubeconfig=kube-scheduler.kubeconfig
+
+  kubectl config set-context default \
+    --cluster=kubernetes-the-hard-way \
+    --user=system:kube-scheduler \
+    --kubeconfig=kube-scheduler.kubeconfig
+
+  kubectl config use-context default --kubeconfig=kube-scheduler.kubeconfig
+}
+```
+
+#### The admin Kubernetes Configuration File
+```
+{
+  kubectl config set-cluster kubernetes-the-hard-way \
+    --certificate-authority=ca.pem \
+    --embed-certs=true \
+    --server=https://127.0.0.1:6443 \
+    --kubeconfig=admin.kubeconfig
+
+  kubectl config set-credentials admin \
+    --client-certificate=admin.pem \
+    --client-key=admin-key.pem \
+    --embed-certs=true \
+    --kubeconfig=admin.kubeconfig
+
+  kubectl config set-context default \
+    --cluster=kubernetes-the-hard-way \
+    --user=admin \
+    --kubeconfig=admin.kubeconfig
+
+  kubectl config use-context default --kubeconfig=admin.kubeconfig
+}
+```
+
+Results:
+```
+$ ls | grep kubeconfig
+admin.kubeconfig
+kube-controller-manager.kubeconfig
+kube-proxy.kubeconfig
+kube-scheduler.kubeconfig
+worker-0.kubeconfig
+worker-1.kubeconfig
+worker-2.kubeconfig
+```
+
+### Distribute the Kubernetes Configuration Files
+Workers:
+```
+$ scp -i <SSH_KEY_PATH> worker-0.kubeconfig kube-proxy.kubeconfig ubuntu@<WORKER_0_IP>:~
+$ scp -i <SSH_KEY_PATH> worker-1.kubeconfig kube-proxy.kubeconfig ubuntu@<WORKER_1_IP>:~
+$ scp -i <SSH_KEY_PATH> worker-2.kubeconfig kube-proxy.kubeconfig ubuntu@<WORKER_2_IP>:~
+```
+
+Master:
+```
+scp -i <SSH_KEY_PATH> admin.kubeconfig kube-controller-manager.kubeconfig kube-scheduler.kubeconfig ubuntu@<MASTER_PUBLIC_IP>:~
+```
+
 
 
 ## Configure a HA Kubernetes Cluster
