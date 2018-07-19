@@ -549,6 +549,37 @@ $ kubectl get endpoints nginx-deployment
 Error from server (NotFound): endpoints "nginx-deployment" not found
 ```
 
+Remove all services:
+```
+$ kubectl get all
+NAME                                    READY     STATUS    RESTARTS   AGE
+pod/curl-775f9567b5-nf6tf               1/1       Running   0          53m
+pod/nginx-deployment-66996bc984-m2fkg   1/1       Running   0          33m
+pod/nginx-deployment-66996bc984-pv572   1/1       Running   0          33m
 
+NAME                 TYPE        CLUSTER-IP   EXTERNAL-IP   PORT(S)   AGE
+service/kubernetes   ClusterIP   10.100.0.1   <none>        443/TCP   7h
+
+NAME                               DESIRED   CURRENT   UP-TO-DATE   AVAILABLE   AGE
+deployment.apps/curl               1         1         1            1           53m
+deployment.apps/nginx-deployment   2         2         2            2           33m
+
+NAME                                          DESIRED   CURRENT   READY     AGE
+replicaset.apps/curl-775f9567b5               1         1         1         53m
+replicaset.apps/nginx-deployment-66996bc984   2         2         2         33m
+
+$ kubectl delete deployment nginx-deployment
+deployment.extensions "nginx-deployment" deleted
+
+$ kubectl delete service nginx-deployment
+Error from server (NotFound): services "nginx-deployment" not found
+
+$ kubectl delete deployment curl
+deployment.extensions "curl" deleted
+
+$ kubectl get all
+NAME                 TYPE        CLUSTER-IP   EXTERNAL-IP   PORT(S)   AGE
+service/kubernetes   ClusterIP   10.100.0.1   <none>        443/TCP   7h
+```
 
 
