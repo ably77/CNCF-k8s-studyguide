@@ -1,5 +1,7 @@
 This Repo is based off of the [CKA Curriculum v1.8.0](https://github.com/cncf/curriculum/blob/master/certified_kubernetes_administrator_exam_v1.9.0.pdf)
 
+Much of the information gathered in this repo is pulled from [Kubernetes.io](kubernetes.io), but is just consolidated in a way that is easier to digest. It was done this way because the test only allows us to use the [Kubernetes.io](kubernetes.io) webpage and [kubectl Cheat Sheet](https://kubernetes.io/docs/reference/kubectl/cheatsheet/) anyways
+
 The general breakdown is below and is what this repo aims to cover:
 
 ## Completed
