@@ -431,11 +431,12 @@ cfssl gencert \
 }
 ```
 
-Generate the Kubernetes API Server certificate and private key - remember to replace the `<MASTER_PUBLIC_IP>`:
+Generate the Kubernetes API Server certificate and private key - remember to replace the `<MASTER_PUBLIC_IP>` and `<MASTER_PRIVATE_IP>`:
 ```
 {
 
 KUBERNETES_PUBLIC_ADDRESS=<MASTER_PUBLIC_IP>
+KUBERNETES_PRIVATE_ADDRESS=<MASTER_PRIVATE_IP>
 
 cat > kubernetes-csr.json <<EOF
 {
@@ -460,7 +461,7 @@ cfssl gencert \
   -ca=ca.pem \
   -ca-key=ca-key.pem \
   -config=ca-config.json \
-  -hostname=10.32.0.1,10.240.0.10,10.240.0.11,10.240.0.12,${KUBERNETES_PUBLIC_ADDRESS},127.0.0.1,kubernetes.default \
+  -hostname=10.32.0.1,10.240.0.10,10.240.0.11,10.240.0.12,${KUBERNETES_PUBLIC_ADDRESS},${KUBERNETES_PRIVATE_ADDRESS},127.0.0.1,kubernetes.default \
   -profile=kubernetes \
   kubernetes-csr.json | cfssljson -bare kubernetes
 
@@ -708,12 +709,10 @@ SSH into the cluster to download etcd:
 ```
 $ ssh -i <SSH_KEY_PATH> ubuntu@<MASTER_PUBLIC_IP>
 
-ubuntu@ip-172-31-20-96:~$
 $ wget -q --show-progress --https-only --timestamping \
->   "https://github.com/coreos/etcd/releases/download/v3.3.5/etcd-v3.3.5-linux-amd64.tar.gz"
-etcd-v3.3.5-linux-amd64.tar.gz                  100%[======================================================================================================>]  10.75M   924KB/s    in 32s
+  "https://github.com/coreos/etcd/releases/download/v3.3.5/etcd-v3.3.5-linux-amd64.tar.gz"
 
-ubuntu@ip-172-31-20-96:~$ ls
+$ ls
 admin.kubeconfig  ca.pem                  etcd-v3.3.5-linux-amd64.tar.gz      kubernetes-key.pem  kube-scheduler.kubeconfig  service-account.pem
 ca-key.pem        encryption-config.yaml  kube-controller-manager.kubeconfig  kubernetes.pem      service-account-key.pem
 ```
@@ -983,8 +982,334 @@ $ sudo systemctl status kube-scheduler
 
 kubectl verification:
 ```
-kubectl get componentstatuses --kubeconfig admin.kubeconfig
+$ kubectl get componentstatuses --kubeconfig admin.kubeconfig
+NAME                 STATUS    MESSAGE             ERROR
+controller-manager   Healthy   ok
+scheduler            Healthy   ok
+etcd-0               Healthy   {"health":"true"}
+```
 
+### Set up RBAC for Kubelet Authorization
+Still in the Master-0 node:
+```
+cat <<EOF | kubectl apply --kubeconfig admin.kubeconfig -f -
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRole
+metadata:
+  annotations:
+    rbac.authorization.kubernetes.io/autoupdate: "true"
+  labels:
+    kubernetes.io/bootstrapping: rbac-defaults
+  name: system:kube-apiserver-to-kubelet
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - nodes/proxy
+      - nodes/stats
+      - nodes/log
+      - nodes/spec
+      - nodes/metrics
+    verbs:
+      - "*"
+EOF
+```
+
+The Kubernetes API Server authenticates to the Kubelet as the kubernetes user using the client certificate as defined by the --kubelet-client-certificate flag.
+
+Bind the system:kube-apiserver-to-kubelet ClusterRole to the kubernetes user:
+```
+cat <<EOF | kubectl apply --kubeconfig admin.kubeconfig -f -
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRoleBinding
+metadata:
+  name: system:kube-apiserver
+  namespace: ""
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:kube-apiserver-to-kubelet
+subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: User
+    name: kubernetes
+EOF
+```
+
+#### Verification
+
+From your local client, make a HTTP request for the Kubernetes version info:
+```
+$ curl --cacert ca.pem https://${KUBERNETES_PUBLIC_ADDRESS}:6443/version
+```
+
+Output should look similar to below:
+```
+{
+  "major": "1",
+  "minor": "10",
+  "gitVersion": "v1.10.2",
+  "gitCommit": "81753b10df112992bf51bbc2c2f85208aad78335",
+  "gitTreeState": "clean",
+  "buildDate": "2018-04-27T09:10:24Z",
+  "goVersion": "go1.9.3",
+  "compiler": "gc",
+  "platform": "linux/amd64"
+```
+
+### Bootstrapping the Kubernetes Worker Nodes:
+
+SSH into worker-0:
+```
+$ ssh -i <SSH_KEY_PATH> ubuntu@<WORKER_0_PUBLIC_IP>
+```
+
+Install the OS dependencies:
+```
+{
+  sudo apt-get update
+  sudo apt-get -y install socat conntrack ipset
+}
+```
+
+Download and Install Worker Binaries:
+```
+wget -q --show-progress --https-only --timestamping \
+  https://github.com/kubernetes-incubator/cri-tools/releases/download/v1.0.0-beta.0/crictl-v1.0.0-beta.0-linux-amd64.tar.gz \
+  https://storage.googleapis.com/kubernetes-the-hard-way/runsc \
+  https://github.com/opencontainers/runc/releases/download/v1.0.0-rc5/runc.amd64 \
+  https://github.com/containernetworking/plugins/releases/download/v0.6.0/cni-plugins-amd64-v0.6.0.tgz \
+  https://github.com/containerd/containerd/releases/download/v1.1.0/containerd-1.1.0.linux-amd64.tar.gz \
+  https://storage.googleapis.com/kubernetes-release/release/v1.10.2/bin/linux/amd64/kubectl \
+  https://storage.googleapis.com/kubernetes-release/release/v1.10.2/bin/linux/amd64/kube-proxy \
+  https://storage.googleapis.com/kubernetes-release/release/v1.10.2/bin/linux/amd64/kubelet
+```
+
+Create the Installation Directories:
+```
+sudo mkdir -p \
+  /etc/cni/net.d \
+  /opt/cni/bin \
+  /var/lib/kubelet \
+  /var/lib/kube-proxy \
+  /var/lib/kubernetes \
+  /var/run/kubernetes
+```
+
+Install the Worker Binaries:
+```
+{
+  chmod +x kubectl kube-proxy kubelet runc.amd64 runsc
+  sudo mv runc.amd64 runc
+  sudo mv kubectl kube-proxy kubelet runc runsc /usr/local/bin/
+  sudo tar -xvf crictl-v1.0.0-beta.0-linux-amd64.tar.gz -C /usr/local/bin/
+  sudo tar -xvf cni-plugins-amd64-v0.6.0.tgz -C /opt/cni/bin/
+  sudo tar -xvf containerd-1.1.0.linux-amd64.tar.gz -C /
+}
+```
+
+#### Configure CNI Networking
+
+Retrieve the CIDR for the current compute instance - for AWS this can be found in the VPC --> Subnet tab. For Example:
+```
+POD_CIDR=172.31.16.0/20
+```
+
+Create the `bridge` network configuration file:
+```
+cat <<EOF | sudo tee /etc/cni/net.d/10-bridge.conf
+{
+    "cniVersion": "0.3.1",
+    "name": "bridge",
+    "type": "bridge",
+    "bridge": "cnio0",
+    "isGateway": true,
+    "ipMasq": true,
+    "ipam": {
+        "type": "host-local",
+        "ranges": [
+          [{"subnet": "${POD_CIDR}"}]
+        ],
+        "routes": [{"dst": "0.0.0.0/0"}]
+    }
+}
+EOF
+```
+
+Create the loopback network configuration file:
+```
+cat <<EOF | sudo tee /etc/cni/net.d/99-loopback.conf
+{
+    "cniVersion": "0.3.1",
+    "type": "loopback"
+}
+EOF
+```
+
+### Configure containerd
+Create the `containerd` configuration file:
+```
+sudo mkdir -p /etc/containerd/
+```
+
+```
+cat << EOF | sudo tee /etc/containerd/config.toml
+[plugins]
+  [plugins.cri.containerd]
+    snapshotter = "overlayfs"
+    [plugins.cri.containerd.default_runtime]
+      runtime_type = "io.containerd.runtime.v1.linux"
+      runtime_engine = "/usr/local/bin/runc"
+      runtime_root = ""
+    [plugins.cri.containerd.untrusted_workload_runtime]
+      runtime_type = "io.containerd.runtime.v1.linux"
+      runtime_engine = "/usr/local/bin/runsc"
+      runtime_root = "/run/containerd/runsc"
+EOF
+```
+
+Create the containerd.service systemd unit file:
+```
+cat <<EOF | sudo tee /etc/systemd/system/containerd.service
+[Unit]
+Description=containerd container runtime
+Documentation=https://containerd.io
+After=network.target
+
+[Service]
+ExecStartPre=/sbin/modprobe overlay
+ExecStart=/bin/containerd
+Restart=always
+RestartSec=5
+Delegate=yes
+KillMode=process
+OOMScoreAdjust=-999
+LimitNOFILE=1048576
+LimitNPROC=infinity
+LimitCORE=infinity
+
+[Install]
+WantedBy=multi-user.target
+EOF
+```
+
+### Configure the Kubelet
+```
+{
+  sudo mv ${HOSTNAME}-key.pem ${HOSTNAME}.pem /var/lib/kubelet/
+  sudo mv ${HOSTNAME}.kubeconfig /var/lib/kubelet/kubeconfig
+  sudo mv ca.pem /var/lib/kubernetes/
+}
+```
+
+Create the kubelet-config.yaml configuration file:
+```
+cat <<EOF | sudo tee /var/lib/kubelet/kubelet-config.yaml
+kind: KubeletConfiguration
+apiVersion: kubelet.config.k8s.io/v1beta1
+authentication:
+  anonymous:
+    enabled: false
+  webhook:
+    enabled: true
+  x509:
+    clientCAFile: "/var/lib/kubernetes/ca.pem"
+authorization:
+  mode: Webhook
+clusterDomain: "cluster.local"
+clusterDNS:
+  - "10.32.0.10"
+podCIDR: "${POD_CIDR}"
+runtimeRequestTimeout: "15m"
+tlsCertFile: "/var/lib/kubelet/${HOSTNAME}.pem"
+tlsPrivateKeyFile: "/var/lib/kubelet/${HOSTNAME}-key.pem"
+EOF
+```
+
+Create the kubelet.service systemd unit file:
+```
+cat <<EOF | sudo tee /etc/systemd/system/kubelet.service
+[Unit]
+Description=Kubernetes Kubelet
+Documentation=https://github.com/kubernetes/kubernetes
+After=containerd.service
+Requires=containerd.service
+
+[Service]
+ExecStart=/usr/local/bin/kubelet \\
+  --config=/var/lib/kubelet/kubelet-config.yaml \\
+  --container-runtime=remote \\
+  --container-runtime-endpoint=unix:///var/run/containerd/containerd.sock \\
+  --image-pull-progress-deadline=2m \\
+  --kubeconfig=/var/lib/kubelet/kubeconfig \\
+  --network-plugin=cni \\
+  --register-node=true \\
+  --v=2
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+```
+
+### Configure the Kubernetes Proxy
+```
+sudo mv kube-proxy.kubeconfig /var/lib/kube-proxy/kubeconfig
+```
+
+Create the kube-proxy-config.yaml configuration file:
+```
+cat <<EOF | sudo tee /var/lib/kube-proxy/kube-proxy-config.yaml
+kind: KubeProxyConfiguration
+apiVersion: kubeproxy.config.k8s.io/v1alpha1
+clientConnection:
+  kubeconfig: "/var/lib/kube-proxy/kubeconfig"
+mode: "iptables"
+clusterCIDR: "10.200.0.0/16"
+EOF
+```
+
+Create the kube-proxy.service systemd unit file:
+```
+cat <<EOF | sudo tee /etc/systemd/system/kube-proxy.service
+[Unit]
+Description=Kubernetes Kube Proxy
+Documentation=https://github.com/kubernetes/kubernetes
+
+[Service]
+ExecStart=/usr/local/bin/kube-proxy \\
+  --config=/var/lib/kube-proxy/kube-proxy-config.yaml
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+```
+
+#### Start the Worker Services
+```
+{
+  sudo systemctl daemon-reload
+  sudo systemctl enable containerd kubelet kube-proxy
+  sudo systemctl start containerd kubelet kube-proxy
+}
+```
+
+#### Verification
+SSH into the Master-0 node:
+```
+kubectl get nodes --kubeconfig admin.kubeconfig
+```
+
+Output should look like below:
+```
+NAME       STATUS    ROLES     AGE       VERSION
+worker-0   Ready     <none>    20s       v1.10.2
+worker-1   Ready     <none>    20s       v1.10.2
+worker-2   Ready     <none>    20s       v1.10.2
+```
 
 ## Configure a HA Kubernetes Cluster
 Reference from kubernetes.io:
