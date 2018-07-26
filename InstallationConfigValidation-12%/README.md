@@ -450,11 +450,12 @@ cfssl gencert \
 }
 ```
 
-Generate the Kubernetes API Server certificate and private key - remember to replace the `<PUBLIC_AWS_ELASTIC_IP>` and `<MASTER_PRIVATE_IP>` variables:
+Generate the Kubernetes API Server certificate and private key - remember to replace the `<PUBLIC_AWS_ELASTIC_IP>` and `<MASTER_X_PRIVATE_IP>` variables:
 ```
-
 KUBERNETES_PUBLIC_ADDRESS=<PUBLIC_AWS_ELASTIC_IP>
-KUBERNETES_PRIVATE_ADDRESS=<MASTER_PRIVATE_IP>
+KUBERNETES_PRIVATE_ADDRESS_0=<MASTER_0_PRIVATE_IP>
+KUBERNETES_PRIVATE_ADDRESS_1=<MASTER_1_PRIVATE_IP>
+KUBERNETES_PRIVATE_ADDRESS_2=<MASTER_2_PRIVATE_IP>
 
 {
 cat > kubernetes-csr.json <<EOF
@@ -480,7 +481,7 @@ cfssl gencert \
   -ca=ca.pem \
   -ca-key=ca-key.pem \
   -config=ca-config.json \
-  -hostname=10.32.0.1,10.240.0.10,10.240.0.11,10.240.0.12,${KUBERNETES_PUBLIC_ADDRESS},${KUBERNETES_PRIVATE_ADDRESS},127.0.0.1,kubernetes.default \
+  -hostname=10.32.0.1,${KUBERNETES_PUBLIC_ADDRESS},${KUBERNETES_PRIVATE_ADDRESS_0},${KUBERNETES_PRIVATE_ADDRESS_1},${KUBERNETES_PRIVATE_ADDRESS_2},127.0.0.1,kubernetes.default,kubernetes,kubernetes.default.svc \
   -profile=kubernetes \
   kubernetes-csr.json | cfssljson -bare kubernetes
 
