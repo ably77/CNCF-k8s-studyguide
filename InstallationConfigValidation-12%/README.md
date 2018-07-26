@@ -450,7 +450,7 @@ cfssl gencert \
 }
 ```
 
-Generate the Kubernetes API Server certificate and private key - remember to replace the `<MASTER_PUBLIC_IP>` and `<MASTER_PRIVATE_IP>` variables:
+Generate the Kubernetes API Server certificate and private key - remember to replace the `<PUBLIC_AWS_ELASTIC_IP>` and `<MASTER_PRIVATE_IP>` variables:
 ```
 
 KUBERNETES_PUBLIC_ADDRESS=<PUBLIC_AWS_ELASTIC_IP>
