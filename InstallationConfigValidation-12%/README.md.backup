@@ -452,11 +452,11 @@ cfssl gencert \
 
 Generate the Kubernetes API Server certificate and private key - remember to replace the `<MASTER_PUBLIC_IP>` and `<MASTER_PRIVATE_IP>` variables:
 ```
+{
 
-KUBERNETES_PUBLIC_ADDRESS=<PUBLIC_AWS_ELASTIC_IP>
+KUBERNETES_PUBLIC_ADDRESS=<MASTER_PUBLIC_IP>
 KUBERNETES_PRIVATE_ADDRESS=<MASTER_PRIVATE_IP>
 
-{
 cat > kubernetes-csr.json <<EOF
 {
   "CN": "kubernetes",
@@ -540,19 +540,15 @@ Following Kelsey Hightower's guide on Provisioning a CA and Generating TLS Certi
 In this section you will generate kubeconfig files for the controller manager, kubelet, kube-proxy, and scheduler clients and the admin user.
 
 #### The kubelet Kubernetes Configuration File:
+Since I am only using 1 Kubernetes Master Node in this installation, remember to replace the `<MASTER_0_PUBLIC_IP>` parameter on the Worker nodes:
 
-Set your `KUBERNETES_PUBLIC_ADDRESS` variable to the AWS Elastic IP that we created earlier for our next steps:
-```
-KUBERNETES_PUBLIC_ADDRESS=<PUBLIC_AWS_ELASTIC_IP>
-```
-
-Generate a kubeconfig file for each worker node:
+Generate a kubeconfig file for each worker node. Be sure to replace the `${KUBERNETES_MASTER_PUBLIC_IP}` parameter before executing:
 ```
 for instance in worker-0 worker-1 worker-2; do
   kubectl config set-cluster kubernetes-the-hard-way \
     --certificate-authority=ca.pem \
     --embed-certs=true \
-    --server=https://${KUBERNETES_PUBLIC_ADDRESS}:6443 \
+    --server=https://${KUBERNETES_MASTER_PUBLIC_IP}:6443 \
     --kubeconfig=${instance}.kubeconfig
 
   kubectl config set-credentials system:node:${instance} \
@@ -571,6 +567,8 @@ done
 ```
 
 #### The kube-proxy Kubernetes Configuration File.
+
+Swap out the `${KUBERNETES_PUBLIC_ADDRESS}` before executing the command:
 ```
 {
   kubectl config set-cluster kubernetes-the-hard-way \
